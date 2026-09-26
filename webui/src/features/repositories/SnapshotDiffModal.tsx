@@ -155,6 +155,7 @@ export const SnapshotDiffModal = ({
   const [stats, setStats] = useState<ResticDiffStatistics | null>(null);
   const [rawUnparsed, setRawUnparsed] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
+  const [excludeFilter, setExcludeFilter] = useState("");
 
   useEffect(() => {
     return () => {
@@ -290,11 +291,40 @@ export const SnapshotDiffModal = ({
     }
   };
 
+  // Both fields accept comma-separated terms. Include keeps a change if its
+  // path matches ANY include term (or if the include field is empty).
+  // Exclude drops a change if its path matches ANY exclude term, applied
+  // after the include filter so exclude always wins.
   const filteredChanges = useMemo(() => {
-    if (!filter) return changes;
-    const f = filter.toLowerCase();
-    return changes.filter((c) => c.path.toLowerCase().includes(f));
-  }, [changes, filter]);
+    const includeTerms = filter
+      .toLowerCase()
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const excludeTerms = excludeFilter
+      .toLowerCase()
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    if (includeTerms.length === 0 && excludeTerms.length === 0) {
+      return changes;
+    }
+
+    return changes.filter((c) => {
+      const path = c.path.toLowerCase();
+      if (
+        includeTerms.length > 0 &&
+        !includeTerms.some((t) => path.includes(t))
+      ) {
+        return false;
+      }
+      if (excludeTerms.length > 0 && excludeTerms.some((t) => path.includes(t))) {
+        return false;
+      }
+      return true;
+    });
+  }, [changes, filter, excludeFilter]);
 
   const displayedChanges = filteredChanges.slice(0, MAX_DISPLAYED_CHANGES);
 
@@ -386,12 +416,24 @@ export const SnapshotDiffModal = ({
             )}
 
             {changes.length > 0 && (
-              <Input
-                size="sm"
-                placeholder="Filter by path..."
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              />
+              <Flex gap={2} wrap="wrap">
+                <Input
+                  size="sm"
+                  flex="1"
+                  minW="200px"
+                  placeholder="Filter by path (comma-separated)..."
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                />
+                <Input
+                  size="sm"
+                  flex="1"
+                  minW="200px"
+                  placeholder="Exclude paths (comma-separated)..."
+                  value={excludeFilter}
+                  onChange={(e) => setExcludeFilter(e.target.value)}
+                />
+              </Flex>
             )}
 
             {changes.length === 0 ? (

@@ -2,7 +2,6 @@ package ioutil
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -110,17 +109,38 @@ type SizeLimitedWriter struct {
 
 var _ io.Writer = &SizeLimitedWriter{}
 
+// Write implements io.Writer, forwarding at most Limit bytes total to the
+// underlying writer and silently discarding anything beyond that.
+//
+// It deliberately never returns a non-nil error once the limit is reached
+// (as long as the underlying writer itself doesn't error). This writer is
+// used as the stdout target for commands run via exec.Cmd (see
+// internal/orchestrator/tasks/taskruncommand.go). When cmd.Stdout is not an
+// *os.File, the Go runtime pipes the child's stdout through an os.Pipe and
+// copies it to this writer in a background goroutine; if Write returns an
+// error, that goroutine stops and closes its end of the pipe. If the child
+// process (e.g. restic emitting a large `diff --json` stream) is still
+// writing at that point, the next write to the now-reader-less pipe kills it
+// with SIGPIPE, which surfaces as "signal: broken pipe" instead of the
+// command finishing normally. Discarding the overflow instead of erroring
+// keeps the pipe drained so the child can run to completion; only the first
+// Limit bytes of output end up stored/forwarded.
 func (w *SizeLimitedWriter) Write(p []byte) (n int, err error) {
 	size := w.Size()
-	if size+uint64(len(p)) > w.Limit {
-		p = p[:w.Limit-size]
-		err = fmt.Errorf("size limit exceeded: %d bytes written, limit is %d bytes", size, w.Limit)
+	if size >= w.Limit {
+		return len(p), nil
 	}
 
-	var e error
-	n, e = w.SizeTrackingWriter.Write(p)
-	if e != nil {
-		err = e
+	keep := p
+	overflow := 0
+	if size+uint64(len(p)) > w.Limit {
+		keep = p[:w.Limit-size]
+		overflow = len(p) - len(keep)
 	}
-	return
+
+	written, err := w.SizeTrackingWriter.Write(keep)
+	if err != nil {
+		return written, err
+	}
+	return written + overflow, nil
 }

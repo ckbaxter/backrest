@@ -9,7 +9,13 @@ import (
 	"github.com/garethgeorge/backrest/internal/ioutil"
 )
 
-var DefaultCommandOutputSizeLimit uint64 = 2_000_000 // 2MB
+// 16MB. Was 2MB upstream; raised because a `restic diff --json` between two
+// snapshots with a lot of drift (e.g. comparing against an old snapshot after
+// months of changes) can easily produce more than 2MB of JSON-lines output.
+// Past this limit the extra output is now discarded gracefully (see
+// ioutil.SizeLimitedWriter) rather than crashing the command, so raising the
+// limit only trades a bit more memory/storage for fewer truncated diffs.
+var DefaultCommandOutputSizeLimit uint64 = 16_000_000
 
 func NewOneoffRunCommandTask(repo *v1.Repo, planID string, flowID int64, at time.Time, command string) Task {
 	return &GenericOneoffTask{
