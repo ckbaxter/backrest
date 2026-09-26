@@ -37,6 +37,7 @@ import {
   SnapshotSummary,
 } from "../../../gen/ts/v1/restic_pb";
 import { SnapshotBrowser } from "../repositories/SnapshotBrowser";
+import { SnapshotDiffModal } from "../repositories/SnapshotDiffModal";
 import {
   formatBytes,
   formatDuration,
@@ -311,6 +312,28 @@ export const OperationRow = ({
           repoId={currentRepoId}
           planId={operation.planId}
         />
+      ),
+    });
+    bodyItems.push({
+      key: "diff",
+      label: "Compare Snapshots",
+      children: (
+        <Box>
+          <Button
+            size="sm"
+            onClick={() =>
+              showModal(
+                <SnapshotDiffModal
+                  repoId={currentRepoId}
+                  planId={operation.planId}
+                  snapshot={snapshotOp.snapshot!}
+                />,
+              )
+            }
+          >
+            Compare with another snapshot
+          </Button>
+        </Box>
       ),
     });
   } else if (operation.op.case === "operationForget") {
